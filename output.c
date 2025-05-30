@@ -184,18 +184,19 @@ handle_output_commit(struct wl_listener *listener, void *data)
 {
 	struct mew_output *output = wl_container_of(listener, output, commit);
 	struct wlr_output_event_commit *event = data;
+	struct wlr_output_state *state = event->state;
 	struct wlr_renderer *renderer = output->server->renderer;
-	struct wlr_buffer *buffer = event->state->buffer;
+	struct wlr_buffer *buffer = state->buffer;
 
 	struct mew_shm *shm;
 	struct mew_shm_data *shm_data;
-	uint32_t shm_committed = event->state->committed;
+	uint32_t shm_committed = 0;
 
 	/* Notes:
 	 * - output layout change will also be called if needed to position the views
 	 * - always update output manager configuration even if the output is now disabled */
 
-	if (event->state->committed & OUTPUT_CONFIG_UPDATED) {
+	if (state->committed & OUTPUT_CONFIG_UPDATED) {
 		update_output_manager_config(output->server);
 	}
 
@@ -217,7 +218,24 @@ handle_output_commit(struct wl_listener *listener, void *data)
 		return;
 	}
 
-	if (shm_committed & WLR_OUTPUT_STATE_BUFFER) {
+	if (state->committed & WLR_OUTPUT_STATE_MODE) {
+		uint32_t width, height;
+		if (state->mode_type == WLR_OUTPUT_STATE_MODE_FIXED) {
+			width = state->mode->width;
+			height = state->mode->height;
+		} else {
+			width = state->custom_mode.width;
+			height = state->custom_mode.height;
+		}
+		if (shm_data->width != width && shm_data->height != height) {
+			if (!shm_set_rect(shm, width, height))
+				wlr_log(WLR_ERROR, "Failed to reset shm rect.");
+			else
+				shm_committed |= WLR_OUTPUT_STATE_MODE;
+		}
+	}
+
+	if (state->committed & WLR_OUTPUT_STATE_BUFFER) {
 		struct wlr_texture *tex = wlr_texture_from_buffer(renderer, buffer);
 		if (!tex) {
 			wlr_log(WLR_ERROR, "Failed to get texture from buffer.");
@@ -226,7 +244,6 @@ handle_output_commit(struct wl_listener *listener, void *data)
 		if (tex->width != shm_data->width || tex->height != shm_data->height) {
 			if (!shm_set_rect(shm, tex->width, tex->height)) {
 				wlr_log(WLR_ERROR, "Failed to reset shm rect.");
-				shm_committed &= ~WLR_OUTPUT_STATE_BUFFER;
 				goto destroy_texture;
 			}
 			shm_committed |= WLR_OUTPUT_STATE_MODE;
@@ -237,10 +254,11 @@ handle_output_commit(struct wl_listener *listener, void *data)
 			.stride = shm_data->stride,
 			.data = shm_data->pixels,
 		});
-		if (!result) {
+
+		if (!result)
 			wlr_log(WLR_ERROR, "Failed to read pixels from texture.");
-			shm_committed &= ~WLR_OUTPUT_STATE_BUFFER;
-		}
+		else
+			shm_committed |= WLR_OUTPUT_STATE_BUFFER;
 destroy_texture:
 		wlr_texture_destroy(tex);
 	}

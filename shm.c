@@ -55,6 +55,7 @@ struct mew_shm *shm_create(const char *backfile, uint32_t format, uint32_t width
 		wlr_log(WLR_ERROR, "Failed to mmap data: %s", strerror(errno));
 		goto close;
 	}
+	data->size = size;
 
 	if (init) {
 		if (sem_init(&data->commit_ready, 1, 0)) {
@@ -68,15 +69,11 @@ struct mew_shm *shm_create(const char *backfile, uint32_t format, uint32_t width
 		}
 	}
 
-	data->committed = WLR_OUTPUT_STATE_MODE;
+	data->committed = 0;
 	data->width = width;
 	data->height = height;
 	data->format = format;
 	data->stride = stride;
-
-	if (sem_post(&data->commit_ready)) {
-		wlr_log(WLR_ERROR, "Failed to post commit_ready: %s", strerror(errno));
-	}
 
 	shm->fd = fd;
 	shm->data = data;
@@ -112,6 +109,7 @@ bool shm_set_rect(struct mew_shm *shm, uint32_t width, uint32_t height)
 		return false;
 	}
 
+	data->size = size;
 	data->width = width;
 	data->height = height;
 	data->stride = stride;
@@ -124,10 +122,9 @@ void shm_destroy(struct mew_shm *shm)
 {
 	int fd = shm->fd;
 	struct mew_shm_data *data = shm->data;
-	int32_t height = data->height;
-	uint32_t stride = data->stride;
-	uint32_t size = sizeof(*data) + sizeof(*(data->pixels)) * stride * height;
-	munmap(data, size);
+	if (data != NULL && data != MAP_FAILED) {
+		munmap(data, data->size);
+	}
 	close(fd);
 }
 

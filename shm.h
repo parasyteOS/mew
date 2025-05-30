@@ -6,6 +6,8 @@
 #include <stdbool.h>
 
 struct mew_shm_data {
+	uint32_t size;
+
 	sem_t commit_ready;
 	sem_t display_done;
 
