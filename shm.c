@@ -13,6 +13,7 @@
 struct mew_shm *shm_create(const char *backfile, uint32_t format, uint32_t width, uint32_t height)
 {
 	int fd;
+	bool init = false;
 	struct mew_shm *shm;
 	struct mew_shm_data *data;
 	// FIXME: hardcode
@@ -28,6 +29,14 @@ struct mew_shm *shm_create(const char *backfile, uint32_t format, uint32_t width
 	if (!shm) {
 		wlr_log(WLR_ERROR, "Failed to allocate memory for shm");
 		return NULL;
+	}
+
+	if (access(backfile, F_OK)) {
+		if (errno != ENOENT) {
+			wlr_log(WLR_ERROR, "Failed to access %s: %s", backfile, strerror(errno));
+			return NULL;
+		}
+		init = true;
 	}
 
 	fd = open(backfile, O_CLOEXEC|O_CREAT|O_RDWR, 0600);
@@ -47,14 +56,16 @@ struct mew_shm *shm_create(const char *backfile, uint32_t format, uint32_t width
 		goto close;
 	}
 
-	if (sem_init(&data->commit_ready, 1, 0)) {
-		wlr_log(WLR_ERROR, "Failed to init semaphore commit_ready: %s", strerror(errno));
-		goto unmap;
-	}
+	if (init) {
+		if (sem_init(&data->commit_ready, 1, 0)) {
+			wlr_log(WLR_ERROR, "Failed to init semaphore commit_ready: %s", strerror(errno));
+			goto unmap;
+		}
 
-	if (sem_init(&data->display_done, 1, 0)) {
-		wlr_log(WLR_ERROR, "Failed to init semaphore display_done: %s", strerror(errno));
-		goto unmap;
+		if (sem_init(&data->display_done, 1, 0)) {
+			wlr_log(WLR_ERROR, "Failed to init semaphore display_done: %s", strerror(errno));
+			goto unmap;
+		}
 	}
 
 	data->committed = WLR_OUTPUT_STATE_MODE;
@@ -78,6 +89,8 @@ close:
 	close(fd);
 free:
 	free(shm);
+	if (init)
+		unlink(backfile);
 	return NULL;
 }
 
