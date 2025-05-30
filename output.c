@@ -184,7 +184,7 @@ handle_output_commit(struct wl_listener *listener, void *data)
 {
 	struct mew_output *output = wl_container_of(listener, output, commit);
 	struct wlr_output_event_commit *event = data;
-	struct wlr_output_state *state = event->state;
+	const struct wlr_output_state *state = event->state;
 	struct wlr_renderer *renderer = output->server->renderer;
 	struct wlr_buffer *buffer = state->buffer;
 
