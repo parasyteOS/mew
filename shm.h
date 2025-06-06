@@ -1,15 +1,16 @@
 #ifndef MEW_SHM_H
 #define MEW_SHM_H
 
-#include <semaphore.h>
 #include <stdint.h>
 #include <stdbool.h>
+
+#define SHM_STATUS_COMMIT_READY (1U << 0)
+#define SHM_STATUS_CLIENT_DONE  (1U << 1)
 
 struct mew_shm_data {
 	uint32_t size;
 
-	sem_t commit_ready;
-	sem_t display_done;
+	uint32_t status;
 
 	uint32_t committed;
 	uint32_t width;
@@ -27,8 +28,10 @@ struct mew_shm {
 
 struct mew_shm *shm_create(const char *backfile, uint32_t format, uint32_t width, uint32_t height);
 bool shm_set_rect(struct mew_shm *shm, uint32_t width, uint32_t height);
-void shm_destroy(struct mew_shm *shm);
-bool shm_display_done(struct mew_shm *shm);
+bool shm_status_check(struct mew_shm *shm, uint32_t status);
+void shm_status_set(struct mew_shm *shm, uint32_t status);
+void shm_status_clear(struct mew_shm *shm, uint32_t status);
 void shm_commit(struct mew_shm *shm, uint32_t committed);
+void shm_destroy(struct mew_shm *shm);
 
 #endif

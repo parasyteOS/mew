@@ -214,9 +214,10 @@ handle_output_commit(struct wl_listener *listener, void *data)
 	shm = output->shm;
 	shm_data = shm->data;
 
-	if (!shm_display_done(shm)) {
+	if (!shm_status_check(shm, SHM_STATUS_CLIENT_DONE))
 		return;
-	}
+
+	shm_status_clear(shm, SHM_STATUS_CLIENT_DONE);
 
 	if (state->committed & WLR_OUTPUT_STATE_MODE) {
 		uint32_t width, height;
@@ -239,7 +240,7 @@ handle_output_commit(struct wl_listener *listener, void *data)
 		struct wlr_texture *tex = wlr_texture_from_buffer(renderer, buffer);
 		if (!tex) {
 			wlr_log(WLR_ERROR, "Failed to get texture from buffer.");
-			return;
+			goto buffer_out;
 		}
 		if (tex->width != shm_data->width || tex->height != shm_data->height) {
 			if (!shm_set_rect(shm, tex->width, tex->height)) {
@@ -261,8 +262,8 @@ handle_output_commit(struct wl_listener *listener, void *data)
 			shm_committed |= WLR_OUTPUT_STATE_BUFFER;
 destroy_texture:
 		wlr_texture_destroy(tex);
+buffer_out:
 	}
-
 	shm_commit(shm, shm_committed);
 }
 

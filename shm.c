@@ -57,17 +57,8 @@ struct mew_shm *shm_create(const char *backfile, uint32_t format, uint32_t width
 	}
 	data->size = size;
 
-	if (init) {
-		if (sem_init(&data->commit_ready, 1, 0)) {
-			wlr_log(WLR_ERROR, "Failed to init semaphore commit_ready: %s", strerror(errno));
-			goto unmap;
-		}
-
-		if (sem_init(&data->display_done, 1, 0)) {
-			wlr_log(WLR_ERROR, "Failed to init semaphore display_done: %s", strerror(errno));
-			goto unmap;
-		}
-	}
+	if (init)
+		data->status = SHM_STATUS_CLIENT_DONE;
 
 	data->committed = 0;
 	data->width = width;
@@ -80,8 +71,6 @@ struct mew_shm *shm_create(const char *backfile, uint32_t format, uint32_t width
 
 	return shm;
 
-unmap:
-	munmap(data, size);
 close:
 	close(fd);
 free:
@@ -118,6 +107,16 @@ bool shm_set_rect(struct mew_shm *shm, uint32_t width, uint32_t height)
 	return true;
 }
 
+bool shm_status_check(struct mew_shm *shm, uint32_t status) {
+	return (shm->data->status & status) != 0;
+}
+void shm_status_set(struct mew_shm *shm, uint32_t status) {
+	shm->data->status |= status;
+}
+void shm_status_clear(struct mew_shm *shm, uint32_t status) {
+	shm->data->status &= ~status;
+}
+
 void shm_destroy(struct mew_shm *shm)
 {
 	int fd = shm->fd;
@@ -131,19 +130,5 @@ void shm_destroy(struct mew_shm *shm)
 void shm_commit(struct mew_shm *shm, uint32_t committed)
 {
 	shm->data->committed = committed;
-	sem_post(&shm->data->commit_ready);
-}
-
-bool shm_display_done(struct mew_shm *shm)
-{
-	if (sem_trywait(&shm->data->display_done)) {
-		if (errno == EAGAIN)
-			wlr_log(WLR_DEBUG, "Client not ready, skip shm update");
-		else
-			wlr_log(WLR_ERROR, "sem_trywait: %s", strerror(errno));
-
-		return false;
-	}
-
-	return true;
+	shm_status_set(shm, SHM_STATUS_COMMIT_READY);
 }
