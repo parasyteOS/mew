@@ -22,13 +22,11 @@
 #include <wlr/util/region.h>
 
 #include <linux/limits.h>
-#include <drm_fourcc.h>
 
 #include "output.h"
 #include "seat.h"
 #include "server.h"
 #include "view.h"
-#include "shm.h"
 
 #define OUTPUT_CONFIG_UPDATED                                                                                          \
 	(WLR_OUTPUT_STATE_ENABLED | WLR_OUTPUT_STATE_MODE | WLR_OUTPUT_STATE_SCALE | WLR_OUTPUT_STATE_TRANSFORM |      \
@@ -145,24 +143,6 @@ output_apply_config(struct mew_output *output, struct wlr_output_configuration_h
 	return true;
 }
 
-static
-bool output_shm_setup(struct mew_output *output)
-{
-	struct mew_server *server = output->server;
-	struct wlr_output *wlr_output = output->wlr_output;
-	char shm_file[PATH_MAX] = {0};
-	int32_t width = wlr_output->width;
-	int32_t height = wlr_output->height;
-	snprintf(shm_file, PATH_MAX, "%s_%d", server->output_shm_template, server->next_output_shm_index);
-
-	output->shm = shm_create(shm_file, DRM_FORMAT_ABGR8888, width, height);
-
-	if (output->shm)
-		server->next_output_shm_index++;
-
-	return output->shm != NULL;
-}
-
 static void
 handle_output_frame(struct wl_listener *listener, void *data)
 {
@@ -185,12 +165,6 @@ handle_output_commit(struct wl_listener *listener, void *data)
 	struct mew_output *output = wl_container_of(listener, output, commit);
 	struct wlr_output_event_commit *event = data;
 	const struct wlr_output_state *state = event->state;
-	struct wlr_renderer *renderer = output->server->renderer;
-	struct wlr_buffer *buffer = state->buffer;
-
-	struct mew_shm *shm;
-	struct mew_shm_data *shm_data;
-	uint32_t shm_committed = 0;
 
 	/* Notes:
 	 * - output layout change will also be called if needed to position the views
@@ -199,72 +173,6 @@ handle_output_commit(struct wl_listener *listener, void *data)
 	if (state->committed & OUTPUT_CONFIG_UPDATED) {
 		update_output_manager_config(output->server);
 	}
-
-	/* SHM Update */
-
-	if (!output->shm) {
-		if (output->server->output_shm_template != NULL)
-			return;
-		if (!output_shm_setup(output)) {
-			wlr_log(WLR_ERROR, "Failed to setup shm, skip shm update");
-			return;
-		}
-	}
-
-	shm = output->shm;
-	shm_data = shm->data;
-
-	if (!shm_status_check(shm, SHM_STATUS_CLIENT_DONE))
-		return;
-
-	shm_status_clear(shm, SHM_STATUS_CLIENT_DONE);
-
-	if (state->committed & WLR_OUTPUT_STATE_MODE) {
-		uint32_t width, height;
-		if (state->mode_type == WLR_OUTPUT_STATE_MODE_FIXED) {
-			width = state->mode->width;
-			height = state->mode->height;
-		} else {
-			width = state->custom_mode.width;
-			height = state->custom_mode.height;
-		}
-		if (shm_data->width != width && shm_data->height != height) {
-			if (!shm_set_rect(shm, width, height))
-				wlr_log(WLR_ERROR, "Failed to reset shm rect.");
-			else
-				shm_committed |= WLR_OUTPUT_STATE_MODE;
-		}
-	}
-
-	if (state->committed & WLR_OUTPUT_STATE_BUFFER) {
-		struct wlr_texture *tex = wlr_texture_from_buffer(renderer, buffer);
-		if (!tex) {
-			wlr_log(WLR_ERROR, "Failed to get texture from buffer.");
-			goto buffer_out;
-		}
-		if (tex->width != shm_data->width || tex->height != shm_data->height) {
-			if (!shm_set_rect(shm, tex->width, tex->height)) {
-				wlr_log(WLR_ERROR, "Failed to reset shm rect.");
-				goto destroy_texture;
-			}
-			shm_committed |= WLR_OUTPUT_STATE_MODE;
-		}
-
-		bool result = wlr_texture_read_pixels(tex, &(struct wlr_texture_read_pixels_options) {
-			.format = shm_data->format,
-			.stride = shm_data->stride,
-			.data = shm_data->pixels,
-		});
-
-		if (!result)
-			wlr_log(WLR_ERROR, "Failed to read pixels from texture.");
-		else
-			shm_committed |= WLR_OUTPUT_STATE_BUFFER;
-destroy_texture:
-		wlr_texture_destroy(tex);
-buffer_out:
-	}
-	shm_commit(shm, shm_committed);
 }
 
 static void
@@ -316,9 +224,6 @@ output_destroy(struct mew_output *output)
 	wl_list_remove(&output->link);
 
 	output_layout_remove(output);
-
-	if (output->shm)
-		shm_destroy(output->shm);
 
 	free(output);
 
@@ -415,10 +320,6 @@ handle_new_output(struct wl_listener *listener, void *data)
 
 	view_position_all(output->server);
 	update_output_manager_config(output->server);
-
-	if (wlr_output->enabled && server->output_shm_template) {
-		output_shm_setup(output);
-	}
 }
 
 void

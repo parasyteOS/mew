@@ -41,14 +41,6 @@ wayland_protos = dependency('wayland-protocols', version: '>=1.14')
 wayland_server = dependency('wayland-server')
 xkbcommon      = dependency('xkbcommon')
 math           = cc.find_library('m')
-drm            = dependency('libdrm',
-                   version: '>=2.4.122',
-                   fallback: 'libdrm',
-                   default_options: [
-                     'auto_features=disabled',
-                     'tests=false',
-                   ],
-                 )
 
 wl_protocol_dir = wayland_protos.get_variable('pkgdatadir')
 wayland_scanner = find_program('wayland-scanner')
@@ -76,7 +68,6 @@ server_protos = declare_dependency(
 mew_sources = [
   'mew.c',
   'output.c',
-  'shm.c',
   'seat.c',
   'view.c',
   'xdg_shell.c',
@@ -84,7 +75,6 @@ mew_sources = [
 
 mew_headers = [
   'output.h',
-  'shm.h',
   'seat.h',
   'server.h',
   'view.h',
@@ -100,7 +90,6 @@ executable(
     wlroots,
     xkbcommon,
     math,
-    drm,
   ],
   install: true,
 )

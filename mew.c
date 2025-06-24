@@ -206,7 +206,6 @@ usage(FILE *file, const char *mew)
 		"\n"
 		" -D\t Enable debug logging\n"
 		" -h\t Display this help message\n"
-		" -s shm file location\n"
 		"\n"
 		" Use -- when you want to pass arguments to APPLICATION\n",
 		mew);
@@ -224,9 +223,6 @@ parse_args(struct mew_server *server, int argc, char *argv[])
 		case 'h':
 			usage(stdout, argv[0]);
 			return false;
-		case 's':
-			server->output_shm_template = optarg;
-			break;
 		default:
 			usage(stderr, argv[0]);
 			return false;

@@ -29,8 +29,6 @@ struct mew_server {
 	struct wl_list outputs; // mew_output::link
 	struct wl_listener new_output;
 	struct wl_listener output_layout_change;
-	char* output_shm_template;
-	int next_output_shm_index;
 
 	struct wl_listener xdg_toplevel_decoration;
 	struct wl_listener new_xdg_toplevel;

@@ -6,13 +6,11 @@
 
 #include "server.h"
 #include "view.h"
-#include "shm.h"
 
 struct mew_output {
 	struct mew_server *server;
 	struct wlr_output *wlr_output;
 	struct wlr_scene_output *scene_output;
-	struct mew_shm *shm;
 
 	struct wl_listener commit;
 	struct wl_listener request_state;
